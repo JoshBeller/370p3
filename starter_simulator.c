@@ -122,6 +122,33 @@ int main(int argc, char *argv[]) {
     readMachineCode(&state, argv[1]);
 
     /* ------------ Initialize State ------------ */
+    state.pc = 0;
+    state.cycles = 0;
+
+    for (int i = 0; i < NUMREGS; i++) {
+        state.reg[i] = 0;
+    }
+
+    state.IFID.instr = NOOPINSTR;
+    state.IFID.pcPlus1 = 0;
+
+    state.IDEX.instr = NOOPINSTR;
+    state.IDEX.pcPlus1 = 0;
+    state.IDEX.valA = 0;
+    state.IDEX.valB = 0;
+    state.IDEX.offset = 0;
+
+    state.EXMEM.instr = NOOPINSTR;
+    state.EXMEM.branchTarget = 0;
+    state.EXMEM.eq = 0;
+    state.EXMEM.aluResult = 0;
+    state.EXMEM.valB = 0;
+
+    state.MEMWB.instr = NOOPINSTR;
+    state.MEMWB.writeData = 0;
+
+    state.WBEND.instr = NOOPINSTR;
+    state.WBEND.writeData = 0;
 
     /* ------------------- END ------------------ */
 
@@ -129,23 +156,69 @@ int main(int argc, char *argv[]) {
 
     while (opcode(state.MEMWB.instr) != HALT) {
         printState(&state);
-
+        newState = state;
         newState.cycles += 1;
-
         /* ---------------------- IF stage --------------------- */
-
+        newState.IFID.instr = state.instrMem[state.pc];
+        newState.IFID.pcPlus1 = state.pc + 1;
+        newState.pc = state.pc + 1;
 
         /* ---------------------- ID stage --------------------- */
-
+        newState.IDEX.instr = state.IFID.instr;
+        newState.IDEX.pcPlus1 = state.IFID.pcPlus1;
+        newState.IDEX.valA = state.reg[field0(state.IFID.instr)];
+        newState.IDEX.valB = state.reg[field1(state.IFID.instr)];
+        newState.IDEX.offset = convertNum(field2(state.IFID.instr));
 
         /* ---------------------- EX stage --------------------- */
+        newState.EXMEM.instr = state.IDEX.instr;
+        newState.EXMEM.branchTarget = state.IDEX.pcPlus1 + state.IDEX.offset;
+        newState.EXMEM.eq = (state.IDEX.valA == state.IDEX.valB);
+        newState.EXMEM.valB = state.IDEX.valB;
 
+        if (opcode(state.IDEX.instr) == ADD) {
+            newState.EXMEM.aluResult = state.IDEX.valA + state.IDEX.valB;
+        }
+        else if (opcode(state.IDEX.instr) == NOR) {
+            newState.EXMEM.aluResult = ~(state.IDEX.valA | state.IDEX.valB);
+        }
+        else if (opcode(state.IDEX.instr) == LW || opcode(state.IDEX.instr) == SW) {
+            newState.EXMEM.aluResult = state.IDEX.valA + state.IDEX.offset;
+        }
+        else if (opcode(state.IDEX.instr) == BEQ) {
+            newState.EXMEM.aluResult = 0;
+        }
+        else {
+            newState.EXMEM.aluResult = 0;
+        }
 
         /* --------------------- MEM stage --------------------- */
+        newState.MEMWB.instr = state.EXMEM.instr;
 
+        if (opcode(state.EXMEM.instr) == ADD || opcode(state.EXMEM.instr) == NOR) {
+            newState.MEMWB.writeData = state.EXMEM.aluResult;
+        }
+        else if (opcode(state.EXMEM.instr) == LW) {
+            newState.MEMWB.writeData = state.dataMem[state.EXMEM.aluResult];
+        }
+        else if (opcode(state.EXMEM.instr) == SW) {
+            newState.dataMem[state.EXMEM.aluResult] = state.EXMEM.valB;
+            newState.MEMWB.writeData = 0;
+        }
+        else {
+            newState.MEMWB.writeData = 0;
+        }
 
         /* ---------------------- WB stage --------------------- */
+        newState.WBEND.instr = state.MEMWB.instr;
+        newState.WBEND.writeData = state.MEMWB.writeData;
 
+        if (opcode(state.MEMWB.instr) == ADD || opcode(state.MEMWB.instr) == NOR) {
+            newState.reg[field2(state.MEMWB.instr)] = state.MEMWB.writeData;
+        }
+        else if (opcode(state.MEMWB.instr) == LW) {
+            newState.reg[field1(state.MEMWB.instr)] = state.MEMWB.writeData;
+        }
 
         /* ------------------------ END ------------------------ */
         state = newState; /* this is the last statement before end of the loop. It marks the end
