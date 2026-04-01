@@ -22,6 +22,32 @@
 #define HALT 6
 #define NOOP 7
 
+static inline int writesToReg(int instr) {
+    int op = opcode(instr);
+    return (op == ADD || op == NOR || op == LW);
+}
+
+static inline int getDestReg(int instr) {
+    int op = opcode(instr);
+    if (op == ADD || op == NOR) {
+        return field2(instr) & 0x7;
+    }
+    if (op == LW) {
+        return field1(instr);
+    }
+    return -1;
+}
+
+static inline int instrUsesRegA(int instr) {
+    int op = opcode(instr);
+    return (op == ADD || op == NOR || op == LW || op == SW || op == BEQ);
+}
+
+static inline int instrUsesRegB(int instr) {
+    int op = opcode(instr);
+    return (op == ADD || op == NOR || op == SW || op == BEQ);
+}
+
 const char* opcode_to_str_map[] = {
     "add",
     "nor",
@@ -170,7 +196,7 @@ int main(int argc, char *argv[]) {
         newState.IDEX.valB = state.reg[field1(state.IFID.instr)];
         newState.IDEX.offset = convertNum(field2(state.IFID.instr));
 
-        /* ---------------------- EX stage --------------------- */
+       /* ---------------------- EX stage --------------------- */
         newState.EXMEM.instr = state.IDEX.instr;
         newState.EXMEM.branchTarget = state.IDEX.pcPlus1 + state.IDEX.offset;
         newState.EXMEM.eq = (state.IDEX.valA == state.IDEX.valB);
@@ -191,7 +217,6 @@ int main(int argc, char *argv[]) {
         else {
             newState.EXMEM.aluResult = 0;
         }
-
         /* --------------------- MEM stage --------------------- */
         newState.MEMWB.instr = state.EXMEM.instr;
 
